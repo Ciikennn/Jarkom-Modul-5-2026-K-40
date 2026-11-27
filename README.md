@@ -20,6 +20,16 @@
 - [Soal 9 — Jalur belakang diutak-atik](#soal-9)
 - [Soal 10 — Para pilot terkunci di dalam](#soal-10)
 - [Kendala & Solusi](#kendala--solusi)
+- [Soal 11 - Casper harus jadi hantu](#soal-11---casper-harus-jadi-hantu)
+- [Soal 12 - Teknisi yang kelewat semangat](#soal-12---teknisi-yang-kelewat-semangat)
+- [Soal 13 - Brankas Balthasar](#soal-13---brankas-balthasar)
+- [Soal 14 - Jam kunjungan sang pinguin](#soal-14---jam-kunjungan-sang-pinguin)
+- [Soal 15 - Banjir ping di pusat komando](#soal-15---banjir-ping-di-pusat-komando)
+- [Soal 16 - Pencuri yang mencoba setiap pintu](#soal-16---pencuri-yang-mencoba-setiap-pintu)
+- [Soal 17 - Sihir hitam di jalur paket](#soal-17---sihir-hitam-di-jalur-paket)
+- [Soal 18 - Gerbang Monolith dan Radar](#soal-18---gerbang-monolith-dan-radar)
+- [Soal 19 - Hukuman untuk sang pengkhianat](#soal-19---hukuman-untuk-sang-pengkhianat)
+- [Soal 20 - Uji kebakaran Geofront](#soal-20---uji-kebakaran-geofront)
 
 ---
 
@@ -3468,3 +3478,683 @@ iptables -t nat -L POSTROUTING -n -v
 | Rute hilang setelah restart | Rute hanya dari script | Simpan di `/etc/network/interfaces` (`up ip route add ...`) |
 | `Temporary failure in name resolution` | DNS kosong / jalur putus | `nameserver 8.8.8.8`; `traceroute` untuk cari hop putus |
 | `trixie-security ... not signed` | Verifikasi repo security | Diabaikan; paket tetap terpasang |
+
+## Soal 11 - Casper harus jadi hantu
+
+Pada tahap ini, node `Magi-Casper` (`192.231.4.58`) dikonfigurasi agar tidak dapat di-`ping` oleh perangkat mana pun di jaringan, termasuk tetangga satu *switch* di `Switch-Terminal` seperti `Magi-Balthasar` (`192.231.4.59`). Firewall dipasang langsung di `Magi-Casper` pada *chain* `INPUT` untuk membuang paket `ICMP echo-request` masuk, namun tetap mengizinkan `ICMP echo-reply` (balasan *ping* keluar milik Casper sendiri) serta menjaga layanan **TCP port 5000** tetap aktif.
+
+Script dijalankan pada `Magi-Casper`:
+
+```bash
+cat << 'EOF' > /root/no11.sh
+#!/bin/bash
+# Soal 11 - Magi-Casper: blokir ping masuk, izinkan ping keluar & TCP 5000
+
+iptables -F INPUT
+iptables -P INPUT ACCEPT
+
+# Izinkan loopback dan balasan koneksi milik Casper sendiri (termasuk echo-reply ping)
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Tolak semua permintaan ping (ICMP echo-request) yang masuk ke Casper
+iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+
+# Pastikan layanan TCP 5000 tetap dapat diakses
+iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
+
+echo "=== [Magi-Casper] Aturan INPUT aktif ==="
+iptables -L INPUT -n -v --line-numbers
+EOF
+
+chmod +x /root/no11.sh
+/root/no11.sh
+```
+
+**Pengujian:**
+Dijalankan pada `Magi-Casper` (uji *ping* keluar ke Balthasar dan Lilith), serta pada `Magi-Balthasar` dan `Lilith` (uji *ping* gagal dan `nc` ke TCP 5000 berhasil):
+```bash
+# Dijalankan pada Magi-Casper (192.231.4.58)
+ping -c 3 192.231.4.59
+ping -c 3 192.231.4.74
+
+# Dijalankan pada Magi-Balthasar (192.231.4.59)
+ping -c 3 192.231.4.58
+echo "tes soal 11 dari balthasar" | nc -w 2 192.231.4.58 5000; echo "Exit code: $?"
+
+# Dijalankan pada Lilith (192.231.4.74)
+ping -c 3 192.231.4.58
+echo "tes soal 11 dari lilith" | nc -w 2 192.231.4.58 5000; echo "Exit code: $?"
+
+# Cek counter drop dan log pesan masuk di Magi-Casper
+iptables -L INPUT -n -v
+cat /root/pesan_5000.log
+```
+
+**Hasil:**
+![Soal 11 Casper](images/soal_11_casper.png)
+![Soal 11 Balthasar](images/soal_11_balthasar.png)
+![Soal 11 Lilith](images/soal_11_lilith.png)
+
+
+## Soal 12 - Teknisi yang kelewat semangat
+
+Pada soal ini, dijalankan *script* sabotase `break_fw.sh` pada `Magi-Casper` (`192.231.4.58`) yang merusak konektivitas keluar (`ping 8.8.8.8` dan `apt-get update`) serta memutus akses `Unit-00` (`192.231.4.68`) ke layanan TCP port `5000`.
+
+### 1. Eksekusi Script Sabotase & Diagnosis
+
+Script sabotase dijalankan pada `Magi-Casper`:
+
+```bash
+cat << 'EOF' > /root/break_fw.sh
+#!/bin/sh
+if [ "$FORCE" != 1 ]; then case "$(hostname)" in *[Cc]asper*) ;; *) echo "Script ini hanya untuk Magi-Casper."; exit 1;; esac; fi
+[ "$(id -u)" = 0 ] || { echo "Harus root"; exit 1; }
+command -v iptables >/dev/null 2>&1 || { echo "iptables belum terpasang (soal 7)."; exit 1; }
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -F INPUT
+iptables -F OUTPUT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -p icmp -j DROP
+iptables -A OUTPUT -p udp --dport 53 -j DROP
+iptables -P INPUT DROP
+echo "Script sudah dirusak"
+EOF
+
+chmod +x /root/break_fw.sh
+sh /root/break_fw.sh
+```
+
+**Penyebab Kerusakan & Penjelasan Gejala:**
+1. **`iptables -P INPUT DROP` tanpa `ESTABLISHED,RELATED` dan tanpa izin TCP `5000`:** Kebijakan default `INPUT DROP` membuang seluruh paket masuk selain *loopback*. Akibatnya, koneksi baru dari `Unit-00` menuju **TCP 5000** langsung dibuang, dan paket balasan HTTP saat menjalankan `apt-get update` juga ikut dibuang.
+2. **`iptables -A INPUT -p icmp -j DROP`:** Aturan ini memblokir seluruh tipe ICMP yang masuk, termasuk `ICMP echo-reply` (tipe 0). Ketika `Magi-Casper` mengirim `ping 8.8.8.8`, paket keluar berhasil dikirim melalui `OUTPUT`, tetapi paket balasannya ditolak di `INPUT`.
+3. **`iptables -A OUTPUT -p udp --dport 53 -j DROP`:** Aturan ini memblokir seluruh kueri DNS keluar (UDP port 53), sehingga `apt-get update` gagal me-resolve alamat domain repositori `deb.debian.org`.
+
+### 2. Perbaikan Firewall
+
+Script perbaikan dijalankan pada `Magi-Casper` (tetap mempertahankan *policy* `INPUT DROP` dan pemblokiran *ping* masuk dari Soal 11):
+
+```bash
+cat << 'EOF' > /root/fix_fw.sh
+#!/bin/bash
+# Soal 12 - perbaikan sabotase firewall di Magi-Casper (tetap menjaga aturan Soal 11)
+
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -F INPUT
+iptables -F OUTPUT
+
+# 1. Izinkan loopback
+iptables -A INPUT -i lo -j ACCEPT
+
+# 2. Izinkan balasan koneksi milik Casper sendiri (ping keluar, DNS, apt-get update)
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# 3. Tetap tolak ping masuk ke Casper (menjaga syarat Soal 11)
+iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+
+# 4. Izinkan koneksi masuk ke layanan TCP 5000 (MAGI listener)
+iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
+
+# 5. Pertahankan default policy INPUT DROP sesuai syarat hardening Soal 12
+iptables -P INPUT DROP
+iptables -P OUTPUT ACCEPT
+
+echo "=== [Magi-Casper] iptables -S setelah perbaikan ==="
+iptables -S
+EOF
+
+chmod +x /root/fix_fw.sh
+/root/fix_fw.sh
+```
+
+**Pengujian:**
+Dijalankan pada `Unit-00` (`192.231.4.68`) untuk menguji koneksi TCP `5000` dan penolakan `ping`, serta pada `Magi-Casper` untuk menguji internet dan `apt-get update`:
+```bash
+# Dijalankan pada Unit-00 (192.231.4.68)
+echo "tes soal 12 dari Unit-00" | nc -w 2 192.231.4.58 5000; echo "Exit code: $?"
+ping -c 3 192.231.4.58
+
+# Dijalankan pada Magi-Casper (192.231.4.58)
+ping -c 3 8.8.8.8
+apt-get update
+cat /root/pesan_5000.log
+iptables -S
+```
+
+**Hasil:**
+![Soal 12 Break](images/soal_12_break.png)
+![Soal 12 Fix](images/soal_12_fix.png)
+![Soal 12 Unit-00](images/soal_12_unit00.png)
+
+
+## Soal 13 - Brankas Balthasar
+
+Pada tahap ini, akses ke layanan **TCP port 5000 dan 5001** pada `Magi-Balthasar` (`192.231.4.59`) dibatasi hanya untuk `Magi-Casper` (`192.231.4.58`) dan seluruh anggota kategori **Pilot** (`Unit-01` `192.231.4.66`, `Unit-02` `192.231.4.67`, `Unit-00` `192.231.4.68`, dan `Sachiel` `192.231.3.130`). Perangkat lain—termasuk `Magi-Melchior` (`192.231.4.60`) yang berada satu *switch*—ditolak seketika menggunakan target `REJECT --reject-with tcp-reset` agar koneksi langsung gagal tanpa menunggu *timeout*.
+
+Script dijalankan pada `Magi-Balthasar`:
+
+```bash
+cat << 'EOF' > /root/no13.sh
+#!/bin/bash
+# Soal 13 - Magi-Balthasar: batasi TCP 5000 & 5001 hanya untuk Casper dan semua Pilot
+
+ALLOWED_IPS="192.231.4.58 192.231.4.66 192.231.4.67 192.231.4.68 192.231.3.130"
+PORTS="5000,5001"
+
+iptables -F INPUT
+iptables -P INPUT ACCEPT
+
+# 1. Izinkan loopback dan balasan koneksi milik Balthasar sendiri (ping 8.8.8.8, dll.)
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# 2. Izinkan Casper dan semua Pilot mengakses TCP 5000 & 5001
+for IP in $ALLOWED_IPS; do
+  iptables -A INPUT -p tcp -s $IP -m multiport --dports $PORTS -j ACCEPT
+done
+
+# 3. Tolak seketika (TCP RST) semua node lain pada TCP 5000 & 5001
+iptables -A INPUT -p tcp -m multiport --dports $PORTS -j REJECT --reject-with tcp-reset
+
+echo "=== [Magi-Balthasar] Aturan INPUT aktif ==="
+iptables -L INPUT -n -v --line-numbers
+EOF
+
+chmod +x /root/no13.sh
+/root/no13.sh
+```
+
+**Pengujian:**
+Dijalankan pada `Unit-01` (berhasil), `Lilith` (ditolak seketika), `Magi-Melchior` (ditolak seketika), dan `Magi-Balthasar` (cek koneksi internet dan log):
+```bash
+# Dijalankan pada Unit-01 (192.231.4.66) -> Harus berhasil (Exit code: 0)
+for P in 5000 5001; do
+  START=$(date +%s.%N)
+  echo "Halo Balthasar port $P dari Unit-01" | nc -w 3 192.231.4.59 $P; RC=$?
+  END=$(date +%s.%N)
+  echo "Port $P -> Exit code: $RC | Durasi: $(awk "BEGIN{print $END-$START}") detik"
+done
+
+# Dijalankan pada Lilith (192.231.4.74) & Magi-Melchior (192.231.4.60) -> Ditolak seketika
+for P in 5000 5001; do
+  START=$(date +%s.%N)
+  nc -w 3 192.231.4.59 $P < /dev/null; RC=$?
+  END=$(date +%s.%N)
+  echo "Port $P -> Exit code: $RC | Durasi: $(awk "BEGIN{print $END-$START}") detik"
+done
+
+# Dijalankan pada Magi-Balthasar (192.231.4.59)
+ping -c 3 8.8.8.8
+cat /root/pesan_5000.log /root/pesan_5001.log
+iptables -L INPUT -n -v
+```
+
+**Hasil:**
+![Soal 13 Balthasar](images/soal_13_balthasar.png)
+![Soal 13 Unit-01](images/soal_13_unit01.png)
+![Soal 13 Reject](images/soal_13_reject.png)
+
+
+## Soal 14 - Jam kunjungan sang pinguin
+
+Pada soal ini, node `Pen-Pen` (`192.231.3.194`) dilindungi dengan pembatasan akses berbasis waktu menggunakan modul `-m time --utc` pada `iptables` untuk lalu lintas `ping` (`ICMP echo-request`) dan layanan **TCP port 80**. Jadwal dikonversi dari WIB ke UTC (7 jam lebih lambat dari WIB) dan disimpan dalam lima variabel wajib pada bagian awal *script*:
+- **Pilot** (`Unit-01`, `Unit-02`, `Unit-00`, `Sachiel`): 08.00–16.00 WIB (`01:00`–`09:00` UTC), Senin–Jumat.
+- **Staf Geofront** (`Lilith`, `Adam`): 17.00–23.00 WIB (`10:00`–`16:00` UTC), setiap hari.
+- **Terduga Dummy System** (`Dummy-Plug`, `Entry-Plug`, `Spy`): selalu ditolak (`DROP`).
+- **Lainnya**: diizinkan tanpa batasan waktu.
+
+Script dijalankan pada `Pen-Pen`:
+
+```bash
+cat << 'EOF' > /root/no14.sh
+#!/bin/bash
+# Soal 14 - Pen-Pen: pembatasan jadwal akses ping & TCP 80 (format waktu UTC = WIB - 7)
+
+PILOT_START="01:00"
+PILOT_STOP="09:00"
+PILOT_DAYS="Mon,Tue,Wed,Thu,Fri"
+STAF_START="10:00"
+STAF_STOP="16:00"
+
+PILOT_IPS="192.231.4.66 192.231.4.67 192.231.4.68 192.231.3.130"
+STAF_IPS="192.231.4.74 192.231.4.75"
+DUMMY_IPS="192.231.4.51 192.231.4.50 192.231.4.102"
+
+iptables -F INPUT
+iptables -P INPUT ACCEPT
+
+# 1. Izinkan loopback dan balasan koneksi milik Pen-Pen sendiri
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# 2. Pilot: izinkan ping & TCP 80 hanya pada jadwal PILOT, sisanya DROP
+for IP in $PILOT_IPS; do
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -m time --utc --timestart $PILOT_START --timestop $PILOT_STOP --weekdays $PILOT_DAYS -j ACCEPT
+  iptables -A INPUT -s $IP -p tcp --dport 80 -m time --utc --timestart $PILOT_START --timestop $PILOT_STOP --weekdays $PILOT_DAYS -j ACCEPT
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -j DROP
+  iptables -A INPUT -s $IP -p tcp --dport 80 -j DROP
+done
+
+# 3. Staf Geofront: izinkan ping & TCP 80 hanya pada jadwal STAF, sisanya DROP
+for IP in $STAF_IPS; do
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -m time --utc --timestart $STAF_START --timestop $STAF_STOP -j ACCEPT
+  iptables -A INPUT -s $IP -p tcp --dport 80 -m time --utc --timestart $STAF_START --timestop $STAF_STOP -j ACCEPT
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -j DROP
+  iptables -A INPUT -s $IP -p tcp --dport 80 -j DROP
+done
+
+# 4. Terduga Dummy System: selalu tolak ping & TCP 80
+for IP in $DUMMY_IPS; do
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -j DROP
+  iptables -A INPUT -s $IP -p tcp --dport 80 -j DROP
+done
+
+echo "=== Waktu UTC Pen-Pen saat ini: $(date -u) ==="
+iptables -L INPUT -n -v --line-numbers
+EOF
+
+chmod +x /root/no14.sh
+/root/no14.sh
+```
+
+**Pengujian:**
+Pengujian dilakukan pada dua kondisi dengan menyesuaikan nilai variabel `PILOT_START`, `PILOT_STOP`, `STAF_START`, dan `STAF_STOP` (tanpa mengubah jam sistem), kemudian diuji dari `Unit-01` (`192.231.4.66`), `Lilith` (`192.231.4.74`), dan `Spy` (`192.231.4.102`):
+```bash
+# Dijalankan pada masing-masing klien uji (Unit-01, Lilith, dan Spy)
+ping -c 3 192.231.3.194
+nc -w 2 192.231.3.194 80 < /dev/null; echo "Exit code: $?"
+```
+
+**Hasil:**
+![Soal 14 Jadwal Cocok](images/soal_14_cocok.png)
+![Soal 14 Jadwal Tidak Cocok](images/soal_14_tidak_cocok.png)
+
+
+## Soal 15 - Banjir ping di pusat komando
+
+Pada tahap ini, `Tokyo3-Core` (`192.231.4.106`) dikonfigurasi untuk membatasi `ping` masuk (`ICMP echo-request`) maksimal **5 ping per detik** menggunakan modul `-m limit --limit 5/second --limit-burst 5` dan membuang kelebihannya (`DROP`). Aturan pembatasan diletakkan **sebelum** aturan `ESTABLISHED,RELATED` agar seluruh paket dalam satu sesi *ping* rapat tetap melewati penghitung kuota, sementara paket *ping* yang dikirim oleh `Tokyo3-Core` sendiri tetap bebas karena balasannya bertipe `ICMP echo-reply`.
+
+Script dijalankan pada `Tokyo3-Core`:
+
+```bash
+cat << 'EOF' > /root/no15.sh
+#!/bin/bash
+# Soal 15 - Tokyo3-Core: batasi ping masuk maksimal 5/detik, buang kelebihannya
+
+iptables -F INPUT
+iptables -P INPUT ACCEPT
+
+# 1. Izinkan loopback
+iptables -A INPUT -i lo -j ACCEPT
+
+# 2. Batasi ping masuk (ICMP echo-request) maksimal 5 per detik
+iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 5/second --limit-burst 5 -j ACCEPT
+
+# 3. Buang seluruh kelebihan ping masuk yang melampaui batas
+iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+
+# 4. Izinkan balasan koneksi milik Tokyo3-Core sendiri (termasuk echo-reply ping keluar)
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+echo "=== [Tokyo3-Core] Aturan INPUT aktif ==="
+iptables -L INPUT -n -v --line-numbers
+EOF
+
+chmod +x /root/no15.sh
+/root/no15.sh
+```
+
+**Pengujian:**
+Dijalankan pada `Lilith` (`192.231.4.74`) untuk simulasi banjir *ping* dan *ping* normal berjeda, serta pada `Tokyo3-Core` untuk memeriksa *counter* `DROP` dan *ping* keluar:
+```bash
+# Dijalankan pada Lilith (192.231.4.74) - Banjir ping (sebagian paket hilang)
+ping -i 0.1 -c 50 192.231.4.106
+
+# Dijalankan pada Lilith setelah jeda minimal 3 detik - Ping normal (0% loss)
+sleep 3
+ping -i 3 -c 4 192.231.4.106
+
+# Dijalankan pada Tokyo3-Core (192.231.4.106)
+iptables -L INPUT -n -v --line-numbers
+ping -c 4 192.231.4.74
+```
+
+**Hasil:**
+![Soal 15 Flood](images/soal_15_flood.png)
+![Soal 15 Normal](images/soal_15_normal.png)
+![Soal 15 Counter](images/soal_15_counter.png)
+
+
+## Soal 16 - Pencuri yang mencoba setiap pintu
+
+Pada soal ini, `Tokyo3-Core` (`192.231.4.106`) dikonfigurasi untuk mendeteksi dan menolak seketika percobaan pemindaian port TCP dari `Dummy-Plug` (`192.231.4.51`) menuju port sensitif **22, 23, dan 3306**. Setiap percobaan dicatat terlebih dahulu oleh target `LOG` dengan awalan `SCAN-NERV: `, kemudian langsung diputus dengan `REJECT --reject-with tcp-reset` tanpa mengganggu akses port layanan **80 dan 8080** maupun klien lainnya.
+
+Script dijalankan pada `Tokyo3-Core`:
+
+```bash
+cat << 'EOF' > /root/no16.sh
+#!/bin/bash
+# Soal 16 - Tokyo3-Core: catat (SCAN-NERV:) & tolak seketika TCP 22, 23, 3306 dari Dummy-Plug
+
+DUMMY_IP="192.231.4.51"
+TRAP_PORTS="22,23,3306"
+
+iptables -F INPUT
+iptables -P INPUT ACCEPT
+
+# 1. Izinkan loopback
+iptables -A INPUT -i lo -j ACCEPT
+
+# 2. Pertahankan aturan Soal 15 (limit ping masuk maksimal 5/detik)
+iptables -A INPUT -p icmp --icmp-type echo-request -m limit --limit 5/second --limit-burst 5 -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+
+# 3. Izinkan balasan koneksi milik Tokyo3-Core sendiri
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# 4. Soal 16: Catat percobaan TCP dari Dummy-Plug ke port 22, 23, 3306 lalu tolak seketika
+iptables -A INPUT -s $DUMMY_IP -p tcp -m multiport --dports $TRAP_PORTS -j LOG --log-prefix "SCAN-NERV: "
+iptables -A INPUT -s $DUMMY_IP -p tcp -m multiport --dports $TRAP_PORTS -j REJECT --reject-with tcp-reset
+
+echo "=== [Tokyo3-Core] Aturan INPUT aktif ==="
+iptables -L INPUT -n -v --line-numbers
+EOF
+
+chmod +x /root/no16.sh
+/root/no16.sh
+```
+
+**Pengujian:**
+Dijalankan pada `Dummy-Plug` (`192.231.4.51`) untuk menguji penolakan instan pada port 22, 23, 3306 serta keberhasilan akses ke port 80 dan 8080, lalu memeriksa *counter* pencatatan di `Tokyo3-Core`:
+```bash
+# Dijalankan pada Dummy-Plug (192.231.4.51)
+for P in 22 23 3306; do
+  START=$(date +%s.%N)
+  nc -w 3 192.231.4.106 $P < /dev/null; RC=$?
+  END=$(date +%s.%N)
+  echo "Port $P -> Exit code: $RC | Durasi: $(awk "BEGIN{print $END-$START}") detik"
+done
+
+for P in 80 8080; do
+  OUT=$(nc -w 3 192.231.4.106 $P < /dev/null 2>&1); RC=$?
+  echo "Port $P -> Balasan: $OUT | Exit code: $RC"
+done
+
+# Dijalankan pada Tokyo3-Core (192.231.4.106)
+iptables -L INPUT -n -v --line-numbers
+```
+
+**Hasil:**
+![Soal 16 Dummy-Plug](images/soal_16_dummy.png)
+![Soal 16 Counter](images/soal_16_counter.png)
+
+
+## Soal 17 - Sihir hitam di jalur paket
+
+Pada tahap ini, router `Fuyutsuki` (sebagai *gateway* dari `Switch-Terminal`) dikonfigurasi menggunakan **Destination NAT (`DNAT`)** pada tabel `nat` *chain* `PREROUTING` untuk membelokkan seluruh lalu lintas **TCP** dari `Magi-Casper` (`192.231.4.58`) yang ditujukan ke `Zeruel` (`192.231.4.82`) agar masuk ke `Pen-Pen` (`192.231.3.194`). Dengan memanfaatkan mekanisme *stateful* `conntrack` pada `Fuyutsuki`, paket balasan dari `Pen-Pen` otomatis diterjemahkan kembali seolah berasal dari `Zeruel`, sementara paket `ping` (ICMP) tetap melintas langsung ke `Zeruel`.
+
+Script dijalankan pada `Fuyutsuki`:
+
+```bash
+cat << 'EOF' > /root/no17.sh
+#!/bin/bash
+# Soal 17 - Fuyutsuki: DNAT seluruh koneksi TCP dari Magi-Casper ke Zeruel agar masuk ke Pen-Pen
+
+CASPER_IP="192.231.4.58"
+ZERUEL_IP="192.231.4.82"
+PENPEN_IP="192.231.3.194"
+
+iptables -t nat -F PREROUTING
+
+# Alihkan hanya trafik TCP dari Magi-Casper ke Zeruel menuju Pen-Pen (ICMP/ping tidak ikut dialihkan)
+iptables -t nat -A PREROUTING -s $CASPER_IP -d $ZERUEL_IP -p tcp -j DNAT --to-destination $PENPEN_IP
+
+echo "=== [Fuyutsuki] Tabel NAT PREROUTING ==="
+iptables -t nat -L PREROUTING -n -v --line-numbers
+EOF
+
+chmod +x /root/no17.sh
+/root/no17.sh
+```
+
+**Pengujian:**
+Setelah menyalakan *listener* TCP port `9000` di `Pen-Pen` dan `Zeruel`, pengiriman pesan dan *ping* dijalankan dari `Magi-Casper`, lalu diperiksa pada log penerima dan tabel `conntrack` di `Fuyutsuki`:
+```bash
+# Dijalankan pada Magi-Casper (192.231.4.58)
+echo "Pesan rahasia untuk Zeruel dari Casper" | nc -w 2 192.231.4.82 9000; echo "Exit code: $?"
+ping -c 2 192.231.4.82
+
+# Dijalankan pada Pen-Pen & Zeruel
+cat /root/pesan_9000.log
+
+# Dijalankan pada Fuyutsuki
+conntrack -L -p tcp --dport 9000
+iptables -t nat -L PREROUTING -n -v --line-numbers
+```
+
+**Hasil:**
+![Soal 17 Casper](images/soal_17_casper.png)
+![Soal 17 Penerima](images/soal_17_penerima.png)
+![Soal 17 Conntrack](images/soal_17_conntrack.png)
+
+
+## Soal 18 - Gerbang Monolith dan Radar
+
+Pada soal ini, router `Shigeru` dikonfigurasi pada *chain* `FORWARD` untuk menjaga zona sensitif (`Switch-Monolith` dan `Switch-Radar`). Seluruh lalu lintas baru yang masuk melalui *interface* `eth0` (sisi yang menghadap `Gendo`) diblokir secara menyeluruh tanpa menuliskan daftar subnet luar satu per satu, dengan satu pengecualian khusus bagi permintaan `ping` (`ICMP echo-request`) yang berasal dari subnet `Terminal` (`192.231.4.56/29`). Node di dalam zona tetap bebas memulai koneksi ke luar karena paket balasannya diizinkan melalui `ESTABLISHED,RELATED`.
+
+Script dijalankan pada `Shigeru`:
+
+```bash
+cat << 'EOF' > /root/no18.sh
+#!/bin/bash
+# Soal 18 - Shigeru: lindungi zona sensitif (Monolith & Radar) berdasarkan interface eth0
+
+TERMINAL_SUBNET="192.231.4.56/29"
+WAN_UP="eth0"   # interface Shigeru yang menghadap Gendo
+
+iptables -F FORWARD
+iptables -P FORWARD ACCEPT
+
+# 1. Izinkan paket balasan (agar node dalam zona bebas memulai koneksi ke mana saja)
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# 2. Pengecualian: izinkan ping (ICMP echo-request) dari subnet Terminal masuk lewat eth0
+iptables -A FORWARD -i $WAN_UP -s $TERMINAL_SUBNET -p icmp --icmp-type echo-request -j ACCEPT
+
+# 3. Tolak semua lalu lintas baru lainnya yang datang dari sisi Gendo (eth0) ke zona sensitif
+iptables -A FORWARD -i $WAN_UP -j DROP
+
+echo "=== [Shigeru] Aturan FORWARD aktif ==="
+iptables -L FORWARD -n -v --line-numbers
+EOF
+
+chmod +x /root/no18.sh
+/root/no18.sh
+```
+
+**Pengujian:**
+Dijalankan pada `Magi-Casper` (berhasil mem-ping `Zeruel`), `Lilith` (gagal mem-ping `Zeruel` dan `Radar-Array`), serta `Zeruel` (berhasil mem-ping ke luar):
+```bash
+# Dijalankan pada Magi-Casper (192.231.4.58) -> Berhasil
+ping -c 3 192.231.4.82
+
+# Dijalankan pada Lilith (192.231.4.74) -> Gagal
+ping -c 3 192.231.4.82
+ping -c 3 192.231.4.90
+
+# Dijalankan pada Zeruel (192.231.4.82) -> Berhasil keluar
+ping -c 3 192.231.4.74
+ping -c 3 8.8.8.8
+```
+
+**Hasil:**
+![Soal 18 Pengujian](images/soal_18_test.png)
+![Soal 18 Shigeru](images/soal_18_shigeru.png)
+
+
+## Soal 19 - Hukuman untuk sang pengkhianat
+
+Pada tahap ini, `Armisael` (`192.231.4.83`) diisolasi total tanpa menyentuh konfigurasi di dalam node `Armisael` itu sendiri dan tanpa mengganggu `Zeruel` (`192.231.4.82`). Pemblokiran dilakukan di dua titik: pada router `Shigeru` (memblokir `INPUT`, `OUTPUT`, dan `FORWARD` dari/ke `Armisael` sehingga terputus dari *gateway* dan jaringan luar) serta pada host `Zeruel` (memblokir komunikasi langsung antar-tetangga satu *switch*).
+
+Script dijalankan pada `Shigeru`:
+
+```bash
+cat << 'EOF' > /root/no19.sh
+#!/bin/bash
+# Soal 19 - Shigeru: isolasi total Armisael (192.231.4.83) tanpa mengganggu Zeruel
+
+ARMISAEL_IP="192.231.4.83"
+TERMINAL_SUBNET="192.231.4.56/29"
+WAN_UP="eth0"
+
+iptables -F INPUT
+iptables -F OUTPUT
+iptables -F FORWARD
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -P FORWARD ACCEPT
+
+# 1. Blokir total Armisael dari/ke gateway Shigeru dan lintas jaringan
+iptables -A INPUT   -s $ARMISAEL_IP -j DROP
+iptables -A OUTPUT  -d $ARMISAEL_IP -j DROP
+iptables -A FORWARD -s $ARMISAEL_IP -j DROP
+iptables -A FORWARD -d $ARMISAEL_IP -j DROP
+
+# 2. Pertahankan aturan Soal 18 untuk zona Monolith & Radar
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i $WAN_UP -s $TERMINAL_SUBNET -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A FORWARD -i $WAN_UP -j DROP
+
+echo "=== [Shigeru] Aturan INPUT, OUTPUT, FORWARD ==="
+iptables -L -n -v --line-numbers
+EOF
+
+chmod +x /root/no19.sh
+/root/no19.sh
+```
+
+Script dijalankan pada `Zeruel`:
+
+```bash
+cat << 'EOF' > /root/no19.sh
+#!/bin/bash
+# Soal 19 - Zeruel: blokir lalu lintas masuk & keluar dengan tetangga satu switch (Armisael)
+
+ARMISAEL_IP="192.231.4.83"
+
+iptables -F INPUT
+iptables -F OUTPUT
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+
+iptables -A INPUT  -s $ARMISAEL_IP -j DROP
+iptables -A OUTPUT -d $ARMISAEL_IP -j DROP
+
+echo "=== [Zeruel] Aturan INPUT & OUTPUT ==="
+iptables -L -n -v --line-numbers
+EOF
+
+chmod +x /root/no19.sh
+/root/no19.sh
+```
+
+**Pengujian:**
+Setelah *listener* TCP port `9000` dinyalakan pada `Armisael`, `Zeruel`, dan `Lilith`, pengujian `ping` dan `nc` dijalankan dari `Armisael` (semua gagal) dan dari `Zeruel` (semua berhasil):
+```bash
+# Dijalankan pada Armisael (192.231.4.83) -> Semua gagal
+ping -c 2 8.8.8.8
+ping -c 2 192.231.4.82
+ping -c 2 192.231.4.74
+nc -w 2 8.8.8.8 53 < /dev/null; echo "Seele:53 -> Exit code: $?"
+echo "tes" | nc -w 2 192.231.4.82 9000; echo "Zeruel:9000 -> Exit code: $?"
+echo "tes" | nc -w 2 192.231.4.74 9000; echo "Lilith:9000 -> Exit code: $?"
+
+# Dijalankan pada Zeruel (192.231.4.82) -> Semua berhasil
+ping -c 2 8.8.8.8
+ping -c 2 192.231.4.74
+nc -w 2 8.8.8.8 53 < /dev/null; echo "Seele:53 -> Exit code: $?"
+echo "Halo Lilith dari Zeruel" | nc -w 2 192.231.4.74 9000; echo "Lilith:9000 -> Exit code: $?"
+```
+
+**Hasil:**
+![Soal 19 Armisael](images/soal_19_armisael.png)
+![Soal 19 Zeruel](images/soal_19_zeruel.png)
+
+
+## Soal 20 - Uji kebakaran Geofront
+
+Pada tahap akhir ini, dilakukan simulasi bencana dan pemulihan idempoten (*idempotent recovery*) pada tiga node yang terdiri atas dua router dan satu *host*, yaitu `Gendo`, `Fuyutsuki`, dan `Magi-Casper`. Pada masing-masing node, seluruh *rule* `iptables` disimpan terlebih dahulu ke berkas `/root/<nama>.rules`, kemudian seluruh *rule* (termasuk tabel `nat`) dan rute statis dihapus, lalu dipulihkan sebanyak **dua kali berturut-turut** menggunakan `iptables-restore` dan `/root/<nama>.sh`.
+
+Script pemulihan pada `Fuyutsuki` (`/root/Fuyutsuki.sh`):
+
+```bash
+cat << 'EOF' > /root/Fuyutsuki.sh
+#!/bin/bash
+sysctl -w net.ipv4.ip_forward=1 >/dev/null
+ip route replace default via 192.231.4.133
+ip route replace 192.231.3.192/27 via 192.231.4.166
+ip route replace 192.231.4.72/29 via 192.231.4.170
+
+iptables -t nat -F PREROUTING
+iptables -t nat -A PREROUTING -s 192.231.4.58 -d 192.231.4.82 -p tcp -j DNAT --to-destination 192.231.3.194
+EOF
+
+chmod +x /root/Fuyutsuki.sh
+/root/Fuyutsuki.sh
+```
+
+Script pemulihan pada `Magi-Casper` (`/root/Magi-Casper.sh`):
+
+```bash
+cat << 'EOF' > /root/Magi-Casper.sh
+#!/bin/bash
+ip route replace default via 192.231.4.57
+
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+iptables -F INPUT
+iptables -F OUTPUT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
+iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
+iptables -P INPUT DROP
+
+if ! ss -ltnp 2>/dev/null | grep -q ":5000\b"; then
+  setsid bash -c '
+    while true; do
+      MSG=$(nc -l -p 5000 2>/dev/null)
+      [ -n "$MSG" ] && echo "[$(date +%H:%M:%S)] $(hostname) port 5000 menerima: $MSG" >> /root/pesan_5000.log
+    done' magi-listener-5000 >/dev/null 2>&1 &
+fi
+EOF
+
+chmod +x /root/Magi-Casper.sh
+/root/Magi-Casper.sh
+```
+
+**Pengujian:**
+Dijalankan pada masing-masing node (`Gendo`, `Fuyutsuki`, dan `Magi-Casper`) dengan siklus simpan `.rules` → hapus *firewall* & rute → pulihkan dua kali berturut-turut → verifikasi jumlah baris dan fungsi jaringan:
+```bash
+# 1. Simpan rules aktif
+iptables-save > /root/<nama>.rules
+
+# 2. Hapus seluruh rule iptables (termasuk nat) dan rute statis
+iptables -P INPUT ACCEPT; iptables -P FORWARD ACCEPT; iptables -P OUTPUT ACCEPT
+iptables -F; iptables -X; iptables -t nat -F; iptables -t nat -X
+# (diikuti penghapusan rute pada masing-masing node)
+
+# 3. Pulihkan 2 kali berturut-turut & bandingkan jumlah baris
+iptables-restore < /root/<nama>.rules && /root/<nama>.sh
+echo "Pemulihan 1 -> filter: $(iptables -S | wc -l) | nat: $(iptables -t nat -S | wc -l) | rute: $(ip route | wc -l)"
+
+iptables-restore < /root/<nama>.rules && /root/<nama>.sh
+echo "Pemulihan 2 -> filter: $(iptables -S | wc -l) | nat: $(iptables -t nat -S | wc -l) | rute: $(ip route | wc -l)"
+```
+
+**Hasil:**
+![Soal 20 Gendo](images/soal_20_gendo.png)
+![Soal 20 Fuyutsuki](images/soal_20_fuyutsuki.png)
+![Soal 20 Casper](images/soal_20_casper.png)
