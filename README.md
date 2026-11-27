@@ -3532,9 +3532,9 @@ cat /root/pesan_5000.log
 ```
 
 **Hasil:**
-![Soal 11 Casper](images/soal_11_casper.png)
-![Soal 11 Balthasar](images/soal_11_balthasar.png)
-![Soal 11 Lilith](images/soal_11_lilith.png)
+![Soal 11 Casper](img/soal_11_casper.png)
+![Soal 11 Balthasar](img/soal_11_balthasar.png)
+![Soal 11 Lilith](img/soal_11_lilith.png)
 
 
 ## Soal 12 - Teknisi yang kelewat semangat
@@ -3624,9 +3624,9 @@ iptables -S
 ```
 
 **Hasil:**
-![Soal 12 Break](images/soal_12_break.png)
-![Soal 12 Fix](images/soal_12_fix.png)
-![Soal 12 Unit-00](images/soal_12_unit00.png)
+![Soal 12 Break](img/soal_12_break.png)
+![Soal 12 Fix](img/soal_12_fix.png)
+![Soal 12 Unit-00](img/soal_12_unit00.png)
 
 
 ## Soal 13 - Brankas Balthasar
@@ -3652,7 +3652,7 @@ iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # 2. Izinkan Casper dan semua Pilot mengakses TCP 5000 & 5001
 for IP in $ALLOWED_IPS; do
-  iptables -A INPUT -p tcp -s $IP -m multiport --dports $PORTS -j ACCEPT
+  iptables -A INPUT -p tcp -s $IP -m multiport --dports$PORTS -j ACCEPT
 done
 
 # 3. Tolak seketika (TCP RST) semua node lain pada TCP 5000 & 5001
@@ -3674,7 +3674,7 @@ for P in 5000 5001; do
   START=$(date +%s.%N)
   echo "Halo Balthasar port $P dari Unit-01" | nc -w 3 192.231.4.59 $P; RC=$?
   END=$(date +%s.%N)
-  echo "Port $P -> Exit code: $RC | Durasi: $(awk "BEGIN{print $END-$START}") detik"
+  echo "Port $P -> Exit code: $RC \vert{} Durasi:$(awk "BEGIN{print $END-$START}") detik"
 done
 
 # Dijalankan pada Lilith (192.231.4.74) & Magi-Melchior (192.231.4.60) -> Ditolak seketika
@@ -3682,7 +3682,7 @@ for P in 5000 5001; do
   START=$(date +%s.%N)
   nc -w 3 192.231.4.59 $P < /dev/null; RC=$?
   END=$(date +%s.%N)
-  echo "Port $P -> Exit code: $RC | Durasi: $(awk "BEGIN{print $END-$START}") detik"
+  echo "Port $P -> Exit code: $RC \vert{} Durasi:$(awk "BEGIN{print $END-$START}") detik"
 done
 
 # Dijalankan pada Magi-Balthasar (192.231.4.59)
@@ -3692,9 +3692,9 @@ iptables -L INPUT -n -v
 ```
 
 **Hasil:**
-![Soal 13 Balthasar](images/soal_13_balthasar.png)
-![Soal 13 Unit-01](images/soal_13_unit01.png)
-![Soal 13 Reject](images/soal_13_reject.png)
+![Soal 13 Balthasar](img/soal_13_balthasar.png)
+![Soal 13 Unit-01](img/soal_13_unit01.png)
+![Soal 13 Reject](img/soal_13_reject.png)
 
 
 ## Soal 14 - Jam kunjungan sang pinguin
@@ -3731,16 +3731,16 @@ iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # 2. Pilot: izinkan ping & TCP 80 hanya pada jadwal PILOT, sisanya DROP
 for IP in $PILOT_IPS; do
-  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -m time --utc --timestart $PILOT_START --timestop $PILOT_STOP --weekdays $PILOT_DAYS -j ACCEPT
-  iptables -A INPUT -s $IP -p tcp --dport 80 -m time --utc --timestart $PILOT_START --timestop $PILOT_STOP --weekdays $PILOT_DAYS -j ACCEPT
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -m time --utc --timestart$PILOT_START --timestop $PILOT_STOP --weekdays$PILOT_DAYS -j ACCEPT
+  iptables -A INPUT -s $IP -p tcp --dport 80 -m time --utc --timestart$PILOT_START --timestop $PILOT_STOP --weekdays$PILOT_DAYS -j ACCEPT
   iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -j DROP
   iptables -A INPUT -s $IP -p tcp --dport 80 -j DROP
 done
 
 # 3. Staf Geofront: izinkan ping & TCP 80 hanya pada jadwal STAF, sisanya DROP
 for IP in $STAF_IPS; do
-  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -m time --utc --timestart $STAF_START --timestop $STAF_STOP -j ACCEPT
-  iptables -A INPUT -s $IP -p tcp --dport 80 -m time --utc --timestart $STAF_START --timestop $STAF_STOP -j ACCEPT
+  iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -m time --utc --timestart $STAF_START --timestop$STAF_STOP -j ACCEPT
+  iptables -A INPUT -s $IP -p tcp --dport 80 -m time --utc --timestart $STAF_START --timestop$STAF_STOP -j ACCEPT
   iptables -A INPUT -s $IP -p icmp --icmp-type echo-request -j DROP
   iptables -A INPUT -s $IP -p tcp --dport 80 -j DROP
 done
@@ -3768,8 +3768,8 @@ nc -w 2 192.231.3.194 80 < /dev/null; echo "Exit code: $?"
 ```
 
 **Hasil:**
-![Soal 14 Jadwal Cocok](images/soal_14_cocok.png)
-![Soal 14 Jadwal Tidak Cocok](images/soal_14_tidak_cocok.png)
+![Soal 14 Jadwal Cocok](img/soal_14_cocok.png)
+![Soal 14 Jadwal Tidak Cocok](img/soal_14_tidak_cocok.png)
 
 
 ## Soal 15 - Banjir ping di pusat komando
@@ -3822,9 +3822,9 @@ ping -c 4 192.231.4.74
 ```
 
 **Hasil:**
-![Soal 15 Flood](images/soal_15_flood.png)
-![Soal 15 Normal](images/soal_15_normal.png)
-![Soal 15 Counter](images/soal_15_counter.png)
+![Soal 15 Flood](img/soal_15_flood.png)
+![Soal 15 Normal](img/soal_15_normal.png)
+![Soal 15 Counter](img/soal_15_counter.png)
 
 
 ## Soal 16 - Pencuri yang mencoba setiap pintu
@@ -3855,8 +3855,8 @@ iptables -A INPUT -p icmp --icmp-type echo-request -j DROP
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # 4. Soal 16: Catat percobaan TCP dari Dummy-Plug ke port 22, 23, 3306 lalu tolak seketika
-iptables -A INPUT -s $DUMMY_IP -p tcp -m multiport --dports $TRAP_PORTS -j LOG --log-prefix "SCAN-NERV: "
-iptables -A INPUT -s $DUMMY_IP -p tcp -m multiport --dports $TRAP_PORTS -j REJECT --reject-with tcp-reset
+iptables -A INPUT -s $DUMMY_IP -p tcp -m multiport --dports$TRAP_PORTS -j LOG --log-prefix "SCAN-NERV: "
+iptables -A INPUT -s $DUMMY_IP -p tcp -m multiport --dports$TRAP_PORTS -j REJECT --reject-with tcp-reset
 
 echo "=== [Tokyo3-Core] Aturan INPUT aktif ==="
 iptables -L INPUT -n -v --line-numbers
@@ -3874,12 +3874,12 @@ for P in 22 23 3306; do
   START=$(date +%s.%N)
   nc -w 3 192.231.4.106 $P < /dev/null; RC=$?
   END=$(date +%s.%N)
-  echo "Port $P -> Exit code: $RC | Durasi: $(awk "BEGIN{print $END-$START}") detik"
+  echo "Port $P -> Exit code: $RC \vert{} Durasi:$(awk "BEGIN{print $END-$START}") detik"
 done
 
 for P in 80 8080; do
   OUT=$(nc -w 3 192.231.4.106 $P < /dev/null 2>&1); RC=$?
-  echo "Port $P -> Balasan: $OUT | Exit code: $RC"
+  echo "Port $P -> Balasan: $OUT \vert{} Exit code:$RC"
 done
 
 # Dijalankan pada Tokyo3-Core (192.231.4.106)
@@ -3887,8 +3887,8 @@ iptables -L INPUT -n -v --line-numbers
 ```
 
 **Hasil:**
-![Soal 16 Dummy-Plug](images/soal_16_dummy.png)
-![Soal 16 Counter](images/soal_16_counter.png)
+![Soal 16 Dummy-Plug](img/soal_16_dummy.png)
+![Soal 16 Counter](img/soal_16_counter.png)
 
 
 ## Soal 17 - Sihir hitam di jalur paket
@@ -3909,7 +3909,7 @@ PENPEN_IP="192.231.3.194"
 iptables -t nat -F PREROUTING
 
 # Alihkan hanya trafik TCP dari Magi-Casper ke Zeruel menuju Pen-Pen (ICMP/ping tidak ikut dialihkan)
-iptables -t nat -A PREROUTING -s $CASPER_IP -d $ZERUEL_IP -p tcp -j DNAT --to-destination $PENPEN_IP
+iptables -t nat -A PREROUTING -s $CASPER_IP -d $ZERUEL_IP -p tcp -j DNAT --to-destination$PENPEN_IP
 
 echo "=== [Fuyutsuki] Tabel NAT PREROUTING ==="
 iptables -t nat -L PREROUTING -n -v --line-numbers
@@ -3935,9 +3935,9 @@ iptables -t nat -L PREROUTING -n -v --line-numbers
 ```
 
 **Hasil:**
-![Soal 17 Casper](images/soal_17_casper.png)
-![Soal 17 Penerima](images/soal_17_penerima.png)
-![Soal 17 Conntrack](images/soal_17_conntrack.png)
+![Soal 17 Casper](img/soal_17_casper.png)
+![Soal 17 Penerima](img/soal_17_penerima.png)
+![Soal 17 Conntrack](img/soal_17_conntrack.png)
 
 
 ## Soal 18 - Gerbang Monolith dan Radar
@@ -3961,7 +3961,7 @@ iptables -P FORWARD ACCEPT
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # 2. Pengecualian: izinkan ping (ICMP echo-request) dari subnet Terminal masuk lewat eth0
-iptables -A FORWARD -i $WAN_UP -s $TERMINAL_SUBNET -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A FORWARD -i $WAN_UP -s$TERMINAL_SUBNET -p icmp --icmp-type echo-request -j ACCEPT
 
 # 3. Tolak semua lalu lintas baru lainnya yang datang dari sisi Gendo (eth0) ke zona sensitif
 iptables -A FORWARD -i $WAN_UP -j DROP
@@ -3990,8 +3990,8 @@ ping -c 3 8.8.8.8
 ```
 
 **Hasil:**
-![Soal 18 Pengujian](images/soal_18_test.png)
-![Soal 18 Shigeru](images/soal_18_shigeru.png)
+![Soal 18 Pengujian](img/soal_18_test.png)
+![Soal 18 Shigeru](img/soal_18_shigeru.png)
 
 
 ## Soal 19 - Hukuman untuk sang pengkhianat
@@ -4024,7 +4024,7 @@ iptables -A FORWARD -d $ARMISAEL_IP -j DROP
 
 # 2. Pertahankan aturan Soal 18 untuk zona Monolith & Radar
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
-iptables -A FORWARD -i $WAN_UP -s $TERMINAL_SUBNET -p icmp --icmp-type echo-request -j ACCEPT
+iptables -A FORWARD -i $WAN_UP -s$TERMINAL_SUBNET -p icmp --icmp-type echo-request -j ACCEPT
 iptables -A FORWARD -i $WAN_UP -j DROP
 
 echo "=== [Shigeru] Aturan INPUT, OUTPUT, FORWARD ==="
@@ -4079,8 +4079,8 @@ echo "Halo Lilith dari Zeruel" | nc -w 2 192.231.4.74 9000; echo "Lilith:9000 ->
 ```
 
 **Hasil:**
-![Soal 19 Armisael](images/soal_19_armisael.png)
-![Soal 19 Zeruel](images/soal_19_zeruel.png)
+![Soal 19 Armisael](img/soal_19_armisael.png)
+![Soal 19 Zeruel](img/soal_19_zeruel.png)
 
 
 ## Soal 20 - Uji kebakaran Geofront
@@ -4126,7 +4126,7 @@ if ! ss -ltnp 2>/dev/null | grep -q ":5000\b"; then
   setsid bash -c '
     while true; do
       MSG=$(nc -l -p 5000 2>/dev/null)
-      [ -n "$MSG" ] && echo "[$(date +%H:%M:%S)] $(hostname) port 5000 menerima: $MSG" >> /root/pesan_5000.log
+      [ -n "$MSG" ] && echo "[$(date +%H:%M:%S)] $(hostname) port 5000 menerima:$MSG" >> /root/pesan_5000.log
     done' magi-listener-5000 >/dev/null 2>&1 &
 fi
 EOF
@@ -4148,13 +4148,13 @@ iptables -F; iptables -X; iptables -t nat -F; iptables -t nat -X
 
 # 3. Pulihkan 2 kali berturut-turut & bandingkan jumlah baris
 iptables-restore < /root/<nama>.rules && /root/<nama>.sh
-echo "Pemulihan 1 -> filter: $(iptables -S | wc -l) | nat: $(iptables -t nat -S | wc -l) | rute: $(ip route | wc -l)"
+echo "Pemulihan 1 -> filter: $(iptables -S | wc -l) | nat: $(iptables -t nat -S \vert{} wc -l) \vert{} rute:$(ip route | wc -l)"
 
 iptables-restore < /root/<nama>.rules && /root/<nama>.sh
-echo "Pemulihan 2 -> filter: $(iptables -S | wc -l) | nat: $(iptables -t nat -S | wc -l) | rute: $(ip route | wc -l)"
+echo "Pemulihan 2 -> filter: $(iptables -S | wc -l) | nat: $(iptables -t nat -S \vert{} wc -l) \vert{} rute:$(ip route | wc -l)"
 ```
 
 **Hasil:**
-![Soal 20 Gendo](images/soal_20_gendo.png)
-![Soal 20 Fuyutsuki](images/soal_20_fuyutsuki.png)
-![Soal 20 Casper](images/soal_20_casper.png)
+![Soal 20 Gendo](img/soal_20_gendo.png)
+![Soal 20 Fuyutsuki](img/soal_20_fuyutsuki.png)
+![Soal 20 Casper](img/soal_20_casper.png)
